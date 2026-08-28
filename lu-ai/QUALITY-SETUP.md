@@ -52,28 +52,37 @@ model — delete it and use the fallback mirror in the installer.
 
 ### Reaching the ComfyUI node canvas
 
-Sections 4–6 need ComfyUI's node graph. If LU AI shows only a prompt box and a
-Generate button, the graph is still there — ComfyUI runs as a local web server,
-and you can open its native interface directly in a browser.
+ComfyUI runs as a local web server. With LU AI running, open:
 
-**With LU AI running**, find the port:
-
-```powershell
-Get-Process python*,ComfyUI* -ErrorAction SilentlyContinue | ForEach-Object {
-  $p = $_
-  Get-NetTCPConnection -State Listen -OwningProcess $_.Id -ErrorAction SilentlyContinue |
-    Select-Object @{n='Process';e={$p.ProcessName}}, LocalPort
-}
+```
+http://127.0.0.1:8188
 ```
 
-Then open `http://127.0.0.1:<port>` in a browser — `8188` is ComfyUI's default.
-A canvas of connected boxes means you have full access and the whole guide
-applies. Bookmark it.
+You get the full ComfyUI interface — confirmed working. On a fresh workflow it
+opens the **Templates** browser over the canvas; close it with the X, or pick a
+template to start from.
 
-If no node canvas is reachable, LU AI is driving ComfyUI through its API with a
-fixed internal workflow. Sections 4–6 aren't available through LU AI's own UI;
-§3 (sampler, steps, CFG) applies wherever those controls are exposed, and §8
-(prompting) works regardless.
+> **Avoid templates tagged `API`.** The Popular tab is full of them — Seedream,
+> GPT Image, Grok Imagine, Qwen Image Edit. Those send your prompt to a paid
+> cloud service. They do not run locally, do not use Juggernaut, and cost money
+> per image. For local generation with your own checkpoint, use a template
+> tagged **Node graph** with no `API` tag.
+
+**Starting workflow:** Templates → **Node Basics** → *Image Generation*. That
+gives the standard chain this guide extends:
+
+```
+Load Checkpoint -> CLIP Text Encode (positive)  ─┐
+                -> CLIP Text Encode (negative)  ─┤
+Empty Latent Image ─────────────────────────────┴─> KSampler -> VAE Decode -> Save Image
+```
+
+Set `Load Checkpoint` to your Juggernaut file, set the latent to 1024x1024, apply
+the §3 sampler settings, and you have a working baseline. Then add §2, §4, §5,
+and §6 on top.
+
+The **Models** item in the left rail lists what ComfyUI can see — use it to
+confirm the VAE and upscalers registered after a restart.
 
 **After adding any model file, fully quit and relaunch LU AI.** A browser refresh
 won't do it — models are only scanned when the engine starts.
