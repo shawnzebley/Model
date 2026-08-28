@@ -37,6 +37,19 @@ C:\Users\13024\ComfyUI\models\loras            <- §5
 Create `vae`, `upscale_models`, or `loras` if they don't exist yet — ComfyUI
 picks them up on startup.
 
+### Verified downloads
+
+These three URLs are confirmed working (sizes as installed):
+
+| File | Size | Folder |
+|---|---|---|
+| `sdxl_vae.safetensors` | 319.1 MB | `models\vae` |
+| `4x-UltraSharp.pth` | 63.9 MB | `models\upscale_models` |
+| `4x_NMKD-Siax_200k.pth` | 63.9 MB | `models\upscale_models` |
+
+If a re-download ever comes back far smaller than these, it's an HTML error page,
+not a model — delete it and use the fallback mirror in the installer.
+
 **Run the installer** from a normal PowerShell window:
 
 ```powershell
