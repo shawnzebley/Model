@@ -1,60 +1,51 @@
 <#
   LU AI - Photorealism Pack installer for Juggernaut XL v9 (ComfyUI / Windows)
 
-  Downloads the SDXL VAE and the two upscale models into the ComfyUI model
-  folders. ComfyUI uses lowercase folder names (models\vae, models\loras,
-  models\upscale_models) that differ from other WebUIs, which is the usual
-  reason a downloaded file never shows up in a node dropdown.
+  Downloads the SDXL VAE and two upscale models into the ComfyUI model folders.
 
-  LU AI installs to C:\Program Files\Locally Uncensored, which Windows
-  protects - so this MUST be run from an elevated (Administrator) PowerShell
-  or every download will fail with an access-denied error. The script checks
-  and tells you if you are not elevated.
+  LU AI's launcher lives in C:\Program Files\Locally Uncensored, but the ComfyUI
+  backend and its models sit in the user profile at %USERPROFILE%\ComfyUI - so
+  this needs NO administrator rights.
 
-  RUN IT:
-    1. Start menu -> type "powershell"
-    2. Right-click "Windows PowerShell" -> Run as administrator
-    3. Paste:
+  RUN IT - a normal PowerShell window is fine:
 
-       powershell -ExecutionPolicy Bypass -File "<path to this file>\install-quality-pack.ps1"
+      powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\install-quality-pack.ps1"
+
+  If Windows blocks the downloaded script ("not digitally signed"), unblock it:
+
+      Unblock-File "$env:USERPROFILE\Desktop\install-quality-pack.ps1"
+
+  ComfyUI uses lowercase folder names (models\vae, models\loras,
+  models\upscale_models) that differ from other WebUIs - the usual reason a
+  downloaded file never shows up in a node dropdown.
 
   The two detail LoRAs are Civitai-hosted and need a logged-in download, and
   Impact Pack installs through ComfyUI Manager; instructions print at the end.
 #>
 
 param(
-    # Defaults to the standard LU AI install location.
-    [string]$ComfyUIRoot = 'C:\Program Files\Locally Uncensored'
+    [string]$ComfyUIRoot = (Join-Path $env:USERPROFILE 'ComfyUI')
 )
 
 $ErrorActionPreference = 'Stop'
 
-function Test-Elevated {
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    return (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
 function Resolve-ComfyUIRoot {
     param([string]$Start)
 
-    if (-not (Test-Path $Start)) { return $null }
+    if (-not $Start -or -not (Test-Path $Start)) { return $null }
 
-    # A ComfyUI root holds models\checkpoints. Packaged apps bury it at various
-    # depths (resources\ComfyUI, app\ComfyUI, ComfyUI_windows_portable\ComfyUI),
-    # so try the common spots first, then fall back to a bounded search.
+    # A ComfyUI root holds models\checkpoints. Packaged builds sometimes nest it,
+    # so probe the common spots before falling back to a bounded search.
     $known = @(
         $Start,
         (Join-Path $Start 'ComfyUI'),
         (Join-Path $Start 'resources\ComfyUI'),
-        (Join-Path $Start 'app\ComfyUI'),
         (Join-Path $Start 'ComfyUI_windows_portable\ComfyUI')
     )
     foreach ($c in $known) {
         if (Test-Path (Join-Path $c 'models\checkpoints')) { return $c }
     }
 
-    Write-Host "Searching for the models folder under $Start ..." -ForegroundColor DarkGray
     $hit = Get-ChildItem -Path $Start -Directory -Recurse -Depth 4 -Filter 'checkpoints' `
              -ErrorAction SilentlyContinue |
            Where-Object { $_.Parent.Name -eq 'models' } |
@@ -64,54 +55,45 @@ function Resolve-ComfyUIRoot {
     return $null
 }
 
-if (-not (Test-Elevated)) {
-    Write-Host ""
-    Write-Host "NOT RUNNING AS ADMINISTRATOR" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "LU AI lives under C:\Program Files, which Windows protects. Without"
-    Write-Host "elevation every download here will fail with access denied."
-    Write-Host ""
-    Write-Host "  1. Start menu -> type: powershell"
-    Write-Host "  2. Right-click 'Windows PowerShell' -> Run as administrator"
-    Write-Host "  3. Re-run this script from that window"
-    Write-Host ""
-    exit 1
-}
-
 $root = Resolve-ComfyUIRoot $ComfyUIRoot
 if (-not $root) {
-    Write-Host "Could not find a ComfyUI install at '$ComfyUIRoot'." -ForegroundColor Red
+    Write-Host "No ComfyUI install found at '$ComfyUIRoot'." -ForegroundColor Red
+    Write-Host "Expected a 'models\checkpoints' folder. Locate it with:"
     Write-Host ""
-    Write-Host "Expected to find a 'models\checkpoints' folder somewhere beneath it."
+    Write-Host "  Get-ChildItem `$env:USERPROFILE -Directory -Recurse -Depth 6 -Filter checkpoints ``" -ForegroundColor White
+    Write-Host "    -ErrorAction SilentlyContinue | Where-Object {`$_.Parent.Name -eq 'models'}" -ForegroundColor White
     Write-Host ""
-    Write-Host "Show me what's actually in there and I can point you at the right path:"
-    Write-Host ""
-    Write-Host "  Get-ChildItem -Path '$ComfyUIRoot' -Directory -Recurse -Depth 3 |" -ForegroundColor White
-    Write-Host "    Select-Object -ExpandProperty FullName" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Or pass the correct folder directly:"
-    Write-Host "  .\install-quality-pack.ps1 -ComfyUIRoot `"<path containing models\checkpoints>`""
+    Write-Host "Then re-run with:  -ComfyUIRoot `"<the folder above models\>`""
     exit 1
 }
 
 Write-Host "ComfyUI root: $root" -ForegroundColor Cyan
 
-# If extra_model_paths.yaml is active it can redirect model loading elsewhere,
-# in which case files placed here may never appear in the dropdowns.
+# Only Program Files and similar protected locations need elevation; a install
+# under the user profile does not.
+if ($root -like "$env:ProgramFiles*" -or $root -like "${env:ProgramFiles(x86)}*") {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $elevated = (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $elevated) {
+        Write-Host "This root is under Program Files and needs an Administrator PowerShell." -ForegroundColor Red
+        Write-Host "Start menu -> right-click 'Windows PowerShell' -> Run as administrator."
+        exit 1
+    }
+}
+
+# An active extra_model_paths.yaml can redirect model loading somewhere else.
 $extraPaths = Join-Path $root 'extra_model_paths.yaml'
 if (Test-Path $extraPaths) {
     $active = Get-Content $extraPaths | Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' }
     if ($active) {
-        Write-Host ""
-        Write-Host "NOTE: extra_model_paths.yaml is present and has uncommented entries." -ForegroundColor Yellow
-        Write-Host "      If models don't appear after restarting, ComfyUI is loading them" -ForegroundColor Yellow
-        Write-Host "      from the paths in that file - put these downloads there instead." -ForegroundColor Yellow
+        Write-Host "NOTE: extra_model_paths.yaml has active entries. If models don't appear" -ForegroundColor Yellow
+        Write-Host "      after restarting, ComfyUI is loading them from the paths in it." -ForegroundColor Yellow
     }
 }
 Write-Host ""
 
-# Destination subfolder, filename, minimum plausible size, and source URLs
-# tried in order.
+# Destination subfolder, filename, minimum plausible size, and sources in order.
 $Downloads = @(
     @{
         Dir = 'models\vae'; Name = 'sdxl_vae.safetensors'; MinBytes = 100MB
@@ -161,7 +143,7 @@ foreach ($item in $Downloads) {
 
             $len = (Get-Item $tmp).Length
             if ($len -lt $item.MinBytes) {
-                # Short file means an HTML error page or an auth redirect, not a model.
+                # A short file is an HTML error page or an auth redirect, not a model.
                 throw ("got {0} MB, expected at least {1} MB" -f
                        [math]::Round($len/1MB,2), [math]::Round($item.MinBytes/1MB,0))
             }
@@ -181,7 +163,7 @@ foreach ($item in $Downloads) {
     if (-not $ok) { $Failed += $item.Name }
 }
 
-# Make sure models\loras exists so the manual LoRA step has somewhere to go.
+# Ensure the LoRA folder exists for the manual step below.
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'models\loras') | Out-Null
 
 Write-Host "--------------------------------------------------------------"
@@ -198,7 +180,7 @@ Write-Host @"
 REMAINING STEPS - these can't be scripted
 ------------------------------------------
 1. Detail LoRAs (Civitai needs a logged-in download)
-   Search Civitai, grab the SDXL version of each, save to:
+   Grab the SDXL version of each and save to:
        $root\models\loras\
      - "Detail Tweaker XL"   (add-detail-xl)
      - "XL More Art - Full"  (xl_more_art-full)
@@ -207,8 +189,8 @@ REMAINING STEPS - these can't be scripted
    ComfyUI Manager -> Custom Nodes Manager -> search "Impact Pack"
    -> install ComfyUI-Impact-Pack
 
-3. Fully restart ComfyUI (close it, relaunch LU AI). A browser refresh
-   is not enough - new model files are only picked up on startup.
+3. Fully quit and relaunch LU AI. A browser refresh is not enough -
+   new model files are only picked up when the backend starts.
 
 4. Build the node chain in QUALITY-SETUP.md section 7, then
    Workflow -> Export so you never have to rebuild it.
