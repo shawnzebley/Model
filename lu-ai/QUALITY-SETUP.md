@@ -1,134 +1,236 @@
-# LU AI — High-Quality Settings & Extensions
+# LU AI — Photorealism Pack for Juggernaut XL v9 (ComfyUI)
 
-Setup notes for a local Stable Diffusion XL install (Automatic1111 / Forge / reForge).
-Run `install-quality-pack.ps1` (Windows) or `install-quality-pack.sh` (Linux/macOS)
-from your WebUI root to download the files, then apply the settings below.
+Setup notes for the local ComfyUI install launched by the **LU AI** desktop
+shortcut, running **Juggernaut XL v9**.
 
----
-
-## 1. VAE — fixes washed-out color
-
-The VAE is the decoder that turns the model's latent output into actual pixels.
-SDXL's baked-in fp16 VAE overflows on bright areas, which is what produces the
-gray, milky, slightly-blown look people blame on the checkpoint.
-
-**Juggernaut v9 ships with the corrected VAE baked in**, so you may see no change.
-Set it explicitly anyway: the moment you swap checkpoints (or load a merge that
-doesn't include one) you'll otherwise get the washed-out look back and spend an
-hour blaming the prompt.
-
-**File:** `sdxl_vae.safetensors` → `models/VAE/`
-
-**Apply:** Settings → VAE → *SD VAE* = `sdxl_vae.safetensors` (not "Automatic").
-Also tick Settings → User Interface → *Quicksettings list* → add `sd_vae` so it
-sits at the top of the page and you can see which VAE is live.
-
-If your checkpoint already ships a good VAE baked in (most modern SDXL merges do),
-"Automatic" is fine — but setting it explicitly means you always know what you got.
+Run `install-quality-pack.ps1` from your ComfyUI folder to download the VAE and
+upscalers into the right places, then build the node chain in §7.
 
 ---
 
-## 2. Sampler — texture and micro-detail
+## 0. First: find your ComfyUI folder
 
-| Sampler | Steps | Use it for |
-|---|---|---|
-| **DPM++ 2M Karras** | 30–40 | Juggernaut's own recommended sampler. Sharpest skin/fabric texture. |
-| **UniPC** | 20–25 | Same quality, fewer steps. Good for fast iteration, then re-roll the keeper on 2M. |
-| DPM++ SDE Karras | 30–40 | Slower, sometimes richer. Non-deterministic — same seed ≠ same image. |
+Everything below needs the folder ComfyUI actually lives in. To find it:
 
-**CFG scale: 3–6.** Juggernaut v9 is tuned to run at low CFG — lower than SDXL
-generally and much lower than SD 1.5 habits suggest. CFG 8+ burns contrast and
-produces exactly the plastic, over-saturated skin that reads as AI. **Start at 4.**
-If the image ignores your prompt, add prompt weight before you add CFG.
+1. Right-click the **LU AI** shortcut on your desktop → **Properties**
+2. Look at **Target** and **Start in**
 
-Steps past ~40 buy you almost nothing — spend that budget on Hi-Res Fix instead.
+You'll see a path like `C:\ComfyUI_windows_portable\...`. The folder containing
+`ComfyUI\models\` is what these notes call **`<ComfyUI>`**. Confirm by opening it —
+you should see a `models` folder with `checkpoints`, `loras`, and `vae` inside,
+and `juggernautXL_v9....safetensors` sitting in `checkpoints`.
 
----
+> **ComfyUI's folder names are lowercase and differ from other WebUIs.** It's
+> `models\vae\`, `models\loras\`, `models\upscale_models\` — not `VAE`, `Lora`,
+> `ESRGAN`. Files in the wrong folder simply won't appear in the node dropdowns.
 
-## 3. Hi-Res Fix — the biggest single quality jump
-
-Raw 1024×1024 SDXL is soft. Hi-Res Fix generates at base resolution, upscales the
-latent, then runs a second denoise pass at the larger size, so the model paints in
-detail that never existed in the first pass. This is not the same as upscaling
-afterward in Extras — that only enlarges what's already there.
-
-**Files:** `4x-UltraSharp.pth`, `4x_NMKD-Siax_200k.pth` → `models/ESRGAN/`
-(some builds use `models/RealESRGAN/` — the script handles both).
-
-**Apply — txt2img → Hi-Res Fix:**
-
-- Upscaler: **4x-UltraSharp** (crisp, general purpose) or **4x_NMKD-Siax_200k** (gentler on skin)
-- Upscale by: **1.5** (safe) to **2.0** (best, more VRAM)
-- Hi-Res steps: **0** (means "same as sampling steps") or 15
-- **Denoising strength: 0.35–0.45** ← the one that matters
-
-Denoise below 0.3 changes nothing and wastes the pass. Above 0.55 the second pass
-starts inventing new content — extra fingers, drifting faces, duplicated subjects.
-0.4 is the sweet spot.
-
-VRAM: 1024 × 2.0 = 2048px. On 8GB, use 1.5x and add `--medvram-sdxl` to
-`COMMANDLINE_ARGS` in `webui-user.bat`. On 12GB+, 2x is comfortable.
+If the LU AI package uses a shared model folder elsewhere, check
+`<ComfyUI>\extra_model_paths.yaml` — if that file exists and is uncommented, it
+redirects where models load from, and you should put files there instead.
 
 ---
 
-## 4. Detail LoRAs — micro-texture injection
+## 1. Install ComfyUI Manager (do this first)
 
-LoRAs are small weight patches loaded on top of the checkpoint. Detail LoRAs are
-trained to push high-frequency texture (pores, thread, bark, grain) without touching
-composition — so you can add them to a prompt you already like and get the same
-image, sharper.
+ComfyUI ships with only base nodes. The Manager adds one-click installation for
+everything else, including the face detailer in §6. Without it you're editing
+folders and git-cloning by hand.
 
-**Files:** `.safetensors` → `models/Lora/`
+Check first — if there's a **Manager** button in the ComfyUI menu, you already
+have it (most packaged builds like LU AI include it).
 
-| LoRA | Weight | Notes |
-|---|---|---|
-| **Detail Tweaker XL** | 0.3 – 0.6 | Positive = more detail, negative = smoother. Try `-0.4` for clean product/graphic work. |
-| **XL More Art (Full)** | 0.2 – 0.5 | Adds painterly richness. Above 0.6 it starts imposing its own style. |
-
-**Apply:** append to the end of your positive prompt:
+If not, from `<ComfyUI>\custom_nodes\`:
 
 ```
-<lora:add-detail-xl:0.4>
-<lora:xl_more_art-full_v1:0.3>
+git clone https://github.com/ltdrdata/ComfyUI-Manager
 ```
 
-The filename inside `<lora:...>` must match the file in `models/Lora/` exactly,
-minus the extension. Easiest path: click the Lora tab in the WebUI and let it
-insert the tag for you.
-
-Stacking both at low weight works well. Stacking both at 0.8 does not — you get
-crunchy, over-etched skin that reads as AI immediately.
+Restart ComfyUI. The **Manager** button appears in the menu panel.
 
 ---
 
-## 5. ADetailer — the missing piece for photoreal faces
+## 2. VAE — fixes washed-out color
 
-Not in the original list, but it does more for photorealism than any LoRA. SDXL
-spends its pixel budget on the whole frame, so a face occupying 8% of a 1024px
-image gets ~80px of actual detail — which is why anything but a close-up portrait
-comes back with a mushy, uncanny face while the rest of the image looks great.
+The VAE decodes the model's latent output into actual pixels. A mismatched or
+overflowing VAE gives you the gray, milky, slightly-blown look that gets blamed
+on the checkpoint.
 
-ADetailer detects faces (and hands) after generation, crops each one, re-renders
-it at full resolution, and composites it back. Half-body and full-body shots stop
-falling apart.
+**Juggernaut v9 has the corrected VAE baked in**, so loading it separately may
+change nothing. Do it anyway — the moment you try a different checkpoint, an
+explicit VAE means one less variable when output goes gray.
 
-**Install:** Extensions → Available → *Load from* → search `adetailer` → Install →
-restart the WebUI. (Or Extensions → Install from URL:
-`https://github.com/Bing-su/adetailer`.)
+**File:** `sdxl_vae.safetensors` → `<ComfyUI>\models\vae\`
 
-**Apply — the ADetailer panel under txt2img:**
+**Nodes:** add **Load VAE**, pick `sdxl_vae.safetensors`, and run its `VAE`
+output into the `vae` input of your **VAE Decode** node — replacing the wire
+coming from the checkpoint loader.
 
-- Enable ADetailer: ticked
-- Model: `face_yolov8n.pt`
-- Inpaint denoising strength: **0.4** (0.5+ and the face stops matching the body)
-- Mask blur: 4, Inpaint padding: 32
-
-Add a second unit with `hand_yolov8n.pt` if hands matter for the shot. It runs
-after Hi-Res Fix, so leave both on together — they fix different problems.
+To use the baked-in one instead, wire `Load Checkpoint`'s `VAE` output there.
+Whichever you choose, the point is that you can see which one is connected.
 
 ---
 
-## 6. Prompting Juggernaut for photorealism
+## 3. Sampler and CFG — texture and micro-detail
+
+In the **KSampler** node these are two separate dropdowns; ComfyUI doesn't bundle
+them into one name like "DPM++ 2M Karras" does elsewhere.
+
+| Field | Set to |
+|---|---|
+| `sampler_name` | **`dpmpp_2m`** |
+| `scheduler` | **`karras`** |
+| `steps` | **35** |
+| `cfg` | **4.0** |
+| `denoise` | 1.0 (first pass only — see §4) |
+
+`dpmpp_2m` + `karras` **is** DPM++ 2M Karras. For faster iteration, `uni_pc` at
+20–25 steps gives near-identical quality; re-roll keepers on `dpmpp_2m`.
+
+**CFG is the setting most worth getting right.** Juggernaut v9 is tuned to run
+low — 3 to 6. CFG 8+ burns contrast and produces exactly the plastic, over-saturated
+skin that reads as AI at a glance. Start at 4. If the image ignores part of your
+prompt, weight that term — `(wool coat:1.3)` — rather than raising CFG.
+
+Steps past ~40 buy almost nothing. Spend that time on §4 instead.
+
+---
+
+## 4. Hi-Res Fix — the biggest single quality jump
+
+There is **no Hi-Res Fix checkbox in ComfyUI.** It's a feature of other WebUIs
+that ComfyUI expects you to build, because it's really just a second sampling
+pass at a larger size — which is exactly why it works. Raw 1024×1024 SDXL is
+soft; the second pass paints in detail that never existed in the first. This is
+not the same as upscaling afterward, which only enlarges what's already there.
+
+**Files:** `4x-UltraSharp.pth`, `4x_NMKD-Siax_200k.pth` → `<ComfyUI>\models\upscale_models\`
+
+**The node chain** — insert between your first KSampler and the final Save Image:
+
+```
+KSampler (pass 1)
+   └─> VAE Decode ──> Upscale Image (using Model) ──> Upscale Image By ──┐
+                            ▲                          (scale 0.5)       │
+              Load Upscale Model                                         │
+              (4x-UltraSharp.pth)                                        ▼
+                                                                    VAE Encode
+                                                                         │
+                                                                         ▼
+                                              KSampler (pass 2, denoise 0.40)
+                                                                         │
+                                                                         ▼
+                                                    VAE Decode ──> Save Image
+```
+
+The `Upscale Image By` at **0.5** is not a mistake — the upscale model is 4x, so
+1024 → 4096, and scaling back down by half lands you at 2048 (a clean 2x) while
+keeping the sharpness the model added. Want 1.5x instead? Use 0.375.
+
+**Pass-2 KSampler settings:** same sampler and CFG, steps 20–25, and
+**`denoise` 0.35–0.45** — this is the number that matters. Below 0.3 the pass
+does nothing and you've wasted the time. Above 0.55 it starts inventing content:
+extra fingers, drifting faces, duplicated subjects. **0.4.**
+
+Both KSamplers take the same positive and negative conditioning — wire the same
+CLIP Text Encode outputs into both.
+
+**Upscaler choice:** `4x-UltraSharp` is crisp and general-purpose;
+`4x_NMKD-Siax_200k` is gentler on skin. Both are in the dropdown once installed —
+swap and compare on the same seed.
+
+**Simpler alternative:** drop an **Upscale Latent By** (scale 2.0) between the two
+KSamplers and skip the decode/encode entirely. Fewer nodes, slightly softer
+result. Fine while you're getting the graph working.
+
+**VRAM:** 2048px is a real jump. If pass 2 OOMs, use 1.5x (scale 0.375), or add
+`--lowvram` to the launch arguments.
+
+---
+
+## 5. Detail LoRAs — micro-texture injection
+
+LoRAs are small weight patches loaded on top of the checkpoint, trained to push
+high-frequency texture (pores, thread, bark, grain) without touching composition —
+so you can add one to a prompt you already like and get the same image, sharper.
+
+**Files:** the `.safetensors` files → `<ComfyUI>\models\loras\`
+
+> **`<lora:name:0.4>` tags in the prompt do nothing in ComfyUI.** That's
+> Automatic1111 syntax. In ComfyUI a LoRA is a node in the graph; typed into a
+> prompt box it's just ignored text. This trips up nearly everyone coming from
+> another WebUI.
+
+**Nodes:** insert **Load LoRA** between `Load Checkpoint` and your CLIP Text
+Encode nodes:
+
+```
+Load Checkpoint ─ MODEL ─> Load LoRA ─ MODEL ─> KSampler
+                └─ CLIP ─>          └─ CLIP ──> CLIP Text Encode (both of them)
+```
+
+Chain a second `Load LoRA` after the first to stack them.
+
+| LoRA | strength_model / strength_clip | Notes |
+|---|---|---|
+| **Detail Tweaker XL** | 0.3 – 0.6 | Negative values smooth instead — try `-0.4` for clean product shots. |
+| **XL More Art (Full)** | 0.2 – 0.5 | Painterly richness. Above 0.6 it imposes its own style. |
+
+Set `strength_model` and `strength_clip` to the same value unless you have a
+reason not to. Both at low weight works well; both at 0.8 gives you crunchy,
+over-etched skin that reads as AI immediately.
+
+---
+
+## 6. FaceDetailer — the missing piece for photoreal faces
+
+Not in your original list, but it does more for photorealism than any LoRA.
+SDXL spreads its pixel budget across the whole frame, so a face occupying 8% of
+a 1024px image gets ~80px of real detail — which is why anything but a close-up
+comes back with a mushy, uncanny face while the rest of the shot looks great.
+
+This is ADetailer's job in other WebUIs. **ComfyUI's equivalent is the
+`FaceDetailer` node from ComfyUI-Impact-Pack**, which detects faces, re-renders
+each at full resolution, and composites them back.
+
+**Install:** Manager → **Custom Nodes Manager** → search `Impact Pack` → install
+**ComfyUI-Impact-Pack** → restart ComfyUI. On first launch it downloads its
+detection models; give it a minute.
+
+**Use:** place a **FaceDetailer** node after the *final* VAE Decode, before Save
+Image. It needs an image, the model, both conditionings, the vae, and a
+**UltralyticsDetectorProvider** set to `bbox/face_yolov8m.pt`.
+
+- `denoise`: **0.4** — above 0.5 the face stops matching the body
+- `guide_size` 512, `max_size` 1024, `feather` 5
+
+Run it after the Hi-Res pass, not instead of it. They fix different problems.
+
+---
+
+## 7. Recommended baseline
+
+```
+Checkpoint:      juggernautXL_v9Rundiffusionphoto2.safetensors
+VAE:             sdxl_vae.safetensors  (via Load VAE node)
+Resolution:      1024x1024 | 832x1216 portrait | 1216x832 landscape
+
+KSampler pass 1:  dpmpp_2m / karras / 35 steps / cfg 4.0 / denoise 1.0
+Upscale:          4x-UltraSharp -> Upscale Image By 0.5   (net 2x)
+KSampler pass 2:  dpmpp_2m / karras / 22 steps / cfg 4.0 / denoise 0.40
+FaceDetailer:     bbox/face_yolov8m.pt, denoise 0.40
+LoRA:             Detail Tweaker XL @ 0.4
+```
+
+**Use SDXL-native resolutions.** SDXL was trained on ~1-megapixel buckets. Asking
+for 512×512 gives worse output than 1024×1024, not faster-and-similar. Valid
+sizes: 1024×1024, 1152×896, 896×1152, 1216×832, 832×1216, 1344×768, 768×1344.
+
+Once the graph works, **Workflow → Export** and keep it. Rebuilding this by hand
+every session is how people give up on ComfyUI.
+
+---
+
+## 8. Prompting Juggernaut for photorealism
 
 Settings get you most of the way; prompt style covers the rest. Juggernaut v9
 responds to **photographic** language, not quality-tag soup.
@@ -141,10 +243,10 @@ shot on Canon EOS R5, 85mm f/1.4, shallow depth of field, natural window light,
 film grain, visible skin texture
 ```
 
-**Backfires:** `masterpiece, best quality, 8k, ultra HD, photorealistic, hyperrealistic,
-award winning, trending on artstation`. Those tags are heavily represented in
-*rendered and illustrated* training data, so they pull toward CGI and digital art —
-the opposite of what you're asking for.
+**Backfires:** `masterpiece, best quality, 8k, ultra HD, photorealistic,
+hyperrealistic, award winning, trending on artstation`. Those tags are heavily
+represented in *rendered and illustrated* training data, so they pull toward CGI
+and digital art — the opposite of what you're asking for.
 
 The levers that actually read as "real photo":
 
@@ -155,7 +257,7 @@ The levers that actually read as "real photo":
 | Imperfection | `film grain`, `visible pores`, `slight motion blur`, `flyaway hairs`, `asymmetrical` |
 | Framing | `candid`, `snapshot`, `documentary photo`, `off-center composition` |
 
-Keep the negative prompt short. Juggernaut v9 needs very little — a long negative
+Keep the negative short — Juggernaut v9 needs very little, and a long negative
 fights the model and flattens output. A reasonable floor:
 
 ```
@@ -164,43 +266,22 @@ cartoon, illustration, 3d render, painting, plastic skin, airbrushed, watermark,
 
 ---
 
-## Recommended baseline
-
-```
-Checkpoint:         juggernautXL_v9Rundiffusionphoto2
-Sampler:            DPM++ 2M Karras
-Steps:              35
-CFG:                4.0
-Resolution:         1024x1024  (or 832x1216 portrait, 1216x832 landscape)
-VAE:                sdxl_vae.safetensors
-Hi-Res Fix:         on
-  Upscaler:         4x-UltraSharp
-  Upscale by:       2.0
-  Hi-Res steps:     0
-  Denoise:          0.4
-LoRAs:              <lora:add-detail-xl:0.4>
-ADetailer:          on, face_yolov8n.pt, denoise 0.4
-```
-
-**Use SDXL-native resolutions.** SDXL was trained on ~1 megapixel buckets. Asking
-for 512×512 gives you worse output than 1024×1024, not faster-and-similar. Valid
-sizes: 1024×1024, 1152×896, 896×1152, 1216×832, 832×1216, 1344×768, 768×1344.
-
----
-
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Gray / washed out | Wrong or overflowing VAE | Set VAE explicitly (§1) |
-| Plastic, over-contrasted | CFG too high | Drop to 4–6 |
-| Soft, blurry, "smeared" | No Hi-Res Fix | Enable at 1.5–2x, denoise 0.4 |
-| Duplicated limbs after Hi-Res | Denoise too high | Drop to 0.35–0.4 |
-| Black image output | fp16 VAE overflow | Add `--no-half-vae` to COMMANDLINE_ARGS |
-| Crunchy, over-etched skin | LoRA weight too high | Drop to 0.3–0.4, or one LoRA not two |
-| OOM at 2x Hi-Res | VRAM | 1.5x, or `--medvram-sdxl` |
-| LoRA tag does nothing | Filename mismatch | Insert the tag from the Lora tab |
-| Mushy face in half/full-body shots | Face too small for the pixel budget | Enable ADetailer (§5) |
-| Face doesn't match the body after ADetailer | Inpaint denoise too high | Drop to 0.35–0.4 |
-| Output looks CGI / like a 3D render | Quality-tag soup in the prompt | Strip `8k, masterpiece, hyperrealistic` (§6) |
-| Ignores the prompt | Reaching for CFG | Weight the term — `(wool coat:1.3)` — before raising CFG |
+| Model not in the dropdown | Wrong folder, or ComfyUI not restarted | Check lowercase `vae` / `loras` / `upscale_models` (§0), then restart — not just refresh |
+| Still not there after restart | `extra_model_paths.yaml` redirects the path | Put the file where that file points (§0) |
+| Gray / washed out | Wrong VAE connected | Wire `Load VAE` into VAE Decode (§2) |
+| Plastic, over-contrasted skin | CFG too high | Drop to 4 |
+| Soft, blurry, "smeared" | Single-pass generation | Build the second pass (§4) |
+| Duplicated limbs after pass 2 | `denoise` too high | 0.35–0.40 |
+| Second pass changes nothing | `denoise` too low | Raise to 0.4 |
+| Black image output | fp16 VAE overflow | Launch with `--fp32-vae` |
+| `<lora:...>` tag does nothing | A1111 syntax | Use a Load LoRA node (§5) |
+| Crunchy, over-etched skin | LoRA weight too high | 0.3–0.4, or one LoRA not two |
+| Mushy face in half/full-body shots | Face too small for the pixel budget | FaceDetailer (§6) |
+| Face doesn't match the body | FaceDetailer denoise too high | 0.35–0.40 |
+| Output looks like a 3D render | Quality-tag soup | Strip `8k, masterpiece, hyperrealistic` (§8) |
+| Ignores the prompt | Reaching for CFG | Weight the term — `(wool coat:1.3)` |
+| OOM on pass 2 | VRAM | `Upscale Image By` 0.375, or `--lowvram` |

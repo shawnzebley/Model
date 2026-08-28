@@ -1,82 +1,107 @@
 <#
-  LU AI - Photorealism Pack installer for Juggernaut XL v9 (Windows / PowerShell)
+  LU AI - Photorealism Pack installer for Juggernaut XL v9 (ComfyUI / Windows)
 
-  Downloads the VAE and upscalers into a Stable Diffusion WebUI install.
-  Run from your WebUI root, or pass -WebUIRoot.
+  Downloads the SDXL VAE and the two upscale models into the ComfyUI model
+  folders. ComfyUI uses lowercase folder names (models\vae, models\loras,
+  models\upscale_models) that differ from other WebUIs, which is the usual
+  reason a downloaded file never shows up in a node dropdown.
 
-      cd C:\path\to\stable-diffusion-webui
-      powershell -ExecutionPolicy Bypass -File .\install-quality-pack.ps1
+  Usage - right-click the LU AI desktop shortcut, Properties, and copy the
+  folder from "Start in". Then:
 
-  The two detail LoRAs are Civitai-hosted and need a logged-in download;
-  the script prints instructions for those at the end.
+      powershell -ExecutionPolicy Bypass -File .\install-quality-pack.ps1 -ComfyUIRoot "C:\path\to\ComfyUI"
+
+  Run with no arguments from inside the ComfyUI folder and it will find itself.
+
+  The two detail LoRAs are Civitai-hosted and need a logged-in download, and
+  Impact Pack installs through ComfyUI Manager; instructions print at the end.
 #>
 
 param(
-    [string]$WebUIRoot = (Get-Location).Path
+    [string]$ComfyUIRoot = (Get-Location).Path
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Each entry: destination subfolder, filename, and one or more source URLs
-# tried in order. If every URL fails, the file is reported as MISSING and
-# nothing partial is left behind.
+function Resolve-ComfyUIRoot {
+    param([string]$Start)
+
+    # A ComfyUI root holds models\checkpoints. Portable builds nest the real
+    # root one level down (ComfyUI_windows_portable\ComfyUI), so check there
+    # and in a parent before giving up.
+    $candidates = @(
+        $Start,
+        (Join-Path $Start 'ComfyUI'),
+        (Split-Path -Parent $Start)
+    )
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path (Join-Path $c 'models\checkpoints'))) { return $c }
+    }
+    return $null
+}
+
+$root = Resolve-ComfyUIRoot $ComfyUIRoot
+if (-not $root) {
+    Write-Host "Could not find a ComfyUI install at '$ComfyUIRoot'." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Expected a 'models\checkpoints' folder. To find the right path:"
+    Write-Host "  1. Right-click the LU AI shortcut on your desktop -> Properties"
+    Write-Host "  2. Copy the 'Start in' path"
+    Write-Host "  3. Re-run:  .\install-quality-pack.ps1 -ComfyUIRoot `"<that path>`""
+    exit 1
+}
+
+Write-Host "ComfyUI root: $root" -ForegroundColor Cyan
+
+# If extra_model_paths.yaml is active it can redirect model loading elsewhere,
+# in which case files placed here may never appear in the dropdowns.
+$extraPaths = Join-Path $root 'extra_model_paths.yaml'
+if (Test-Path $extraPaths) {
+    $active = Get-Content $extraPaths | Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' }
+    if ($active) {
+        Write-Host ""
+        Write-Host "NOTE: extra_model_paths.yaml is present and has uncommented entries." -ForegroundColor Yellow
+        Write-Host "      If models don't appear after restarting, ComfyUI is loading them" -ForegroundColor Yellow
+        Write-Host "      from the paths in that file - put these downloads there instead." -ForegroundColor Yellow
+    }
+}
+Write-Host ""
+
+# Destination subfolder, filename, minimum plausible size, and source URLs
+# tried in order.
 $Downloads = @(
     @{
-        Dir  = 'models\VAE'
-        Name = 'sdxl_vae.safetensors'
+        Dir = 'models\vae'; Name = 'sdxl_vae.safetensors'; MinBytes = 100MB
         Urls = @(
             'https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors?download=true',
             'https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl.vae.safetensors?download=true'
         )
-        MinBytes = 100MB
     },
     @{
-        Dir  = 'models\ESRGAN'
-        Name = '4x-UltraSharp.pth'
+        Dir = 'models\upscale_models'; Name = '4x-UltraSharp.pth'; MinBytes = 30MB
         Urls = @(
             'https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.pth?download=true',
             'https://huggingface.co/uwg/upscaler/resolve/main/ESRGAN/4x-UltraSharp.pth?download=true'
         )
-        MinBytes = 30MB
     },
     @{
-        Dir  = 'models\ESRGAN'
-        Name = '4x_NMKD-Siax_200k.pth'
+        Dir = 'models\upscale_models'; Name = '4x_NMKD-Siax_200k.pth'; MinBytes = 30MB
         Urls = @(
             'https://huggingface.co/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-Siax_200k.pth?download=true',
             'https://huggingface.co/gemasai/4x_NMKD-Siax_200k/resolve/main/4x_NMKD-Siax_200k.pth?download=true'
         )
-        MinBytes = 30MB
     }
 )
-
-function Test-IsWebUIRoot {
-    param([string]$Root)
-    # A real WebUI install has a models directory and a launcher.
-    return (Test-Path (Join-Path $Root 'models')) -and
-           ((Test-Path (Join-Path $Root 'webui-user.bat')) -or
-            (Test-Path (Join-Path $Root 'webui.py')) -or
-            (Test-Path (Join-Path $Root 'launch.py')))
-}
-
-if (-not (Test-IsWebUIRoot $WebUIRoot)) {
-    Write-Host "'$WebUIRoot' does not look like a Stable Diffusion WebUI install." -ForegroundColor Red
-    Write-Host "Expected a 'models' folder plus webui-user.bat / webui.py / launch.py."
-    Write-Host "Re-run from the WebUI root, or: .\install-quality-pack.ps1 -WebUIRoot 'C:\path\to\webui'"
-    exit 1
-}
-
-Write-Host "WebUI root: $WebUIRoot`n" -ForegroundColor Cyan
 
 $Failed = @()
 
 foreach ($item in $Downloads) {
-    $destDir = Join-Path $WebUIRoot $item.Dir
+    $destDir = Join-Path $root $item.Dir
     $dest    = Join-Path $destDir $item.Name
 
     if (Test-Path $dest) {
-        $sizeMB = [math]::Round((Get-Item $dest).Length / 1MB, 1)
-        Write-Host "SKIP  $($item.Name) - already present ($sizeMB MB)" -ForegroundColor DarkGray
+        Write-Host ("SKIP  {0} - already present ({1} MB)" -f $item.Name,
+                    [math]::Round((Get-Item $dest).Length / 1MB, 1)) -ForegroundColor DarkGray
         continue
     }
 
@@ -88,17 +113,19 @@ foreach ($item in $Downloads) {
         Write-Host "GET   $($item.Name)" -ForegroundColor Yellow
         Write-Host "      $url" -ForegroundColor DarkGray
         try {
-            $ProgressPreference = 'SilentlyContinue'   # 10x faster on large files
+            $ProgressPreference = 'SilentlyContinue'   # much faster on large files
             Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 10
 
             $len = (Get-Item $tmp).Length
             if ($len -lt $item.MinBytes) {
-                # Almost always an HTML error page or an auth redirect, not the model.
-                throw "downloaded only $([math]::Round($len/1MB,2)) MB, expected at least $([math]::Round($item.MinBytes/1MB,0)) MB"
+                # Short file means an HTML error page or an auth redirect, not a model.
+                throw ("got {0} MB, expected at least {1} MB" -f
+                       [math]::Round($len/1MB,2), [math]::Round($item.MinBytes/1MB,0))
             }
 
             Move-Item -Force $tmp $dest
-            Write-Host "OK    $($item.Name) ($([math]::Round($len/1MB,1)) MB)`n" -ForegroundColor Green
+            Write-Host ("OK    {0} ({1} MB) -> {2}`n" -f $item.Name,
+                        [math]::Round($len/1MB,1), $item.Dir) -ForegroundColor Green
             $ok = $true
             break
         }
@@ -111,45 +138,35 @@ foreach ($item in $Downloads) {
     if (-not $ok) { $Failed += $item.Name }
 }
 
-# Forge and some reForge builds look in models\RealESRGAN instead of models\ESRGAN.
-# Copy the upscalers across so both layouts find them.
-$esrgan = Join-Path $WebUIRoot 'models\ESRGAN'
-$real   = Join-Path $WebUIRoot 'models\RealESRGAN'
-if ((Test-Path $esrgan) -and (Test-Path $real)) {
-    Get-ChildItem $esrgan -Filter *.pth | ForEach-Object {
-        $target = Join-Path $real $_.Name
-        if (-not (Test-Path $target)) {
-            Copy-Item $_.FullName $target
-            Write-Host "COPY  $($_.Name) -> models\RealESRGAN" -ForegroundColor DarkGray
-        }
-    }
-}
+# Make sure models\loras exists so the manual LoRA step has somewhere to go.
+New-Item -ItemType Directory -Force -Path (Join-Path $root 'models\loras') | Out-Null
 
-Write-Host "`n--------------------------------------------------------------"
+Write-Host "--------------------------------------------------------------"
 if ($Failed.Count -gt 0) {
-    Write-Host "These files did not download:" -ForegroundColor Red
+    Write-Host "These did not download:" -ForegroundColor Red
     $Failed | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
-    Write-Host "Download them by hand and drop them in the folders listed in QUALITY-SETUP.md."
+    Write-Host "Download them by hand into the folders listed in QUALITY-SETUP.md."
 } else {
     Write-Host "All downloads complete." -ForegroundColor Green
 }
 
 Write-Host @"
 
-MANUAL STEP - the two detail LoRAs
-----------------------------------
-Civitai requires a logged-in session, so these can't be scripted reliably.
-Search Civitai for each, download the SDXL version, and save to:
+REMAINING STEPS - these can't be scripted
+------------------------------------------
+1. Detail LoRAs (Civitai needs a logged-in download)
+   Search Civitai, grab the SDXL version of each, save to:
+       $root\models\loras\
+     - "Detail Tweaker XL"   (add-detail-xl)
+     - "XL More Art - Full"  (xl_more_art-full)
 
-    $WebUIRoot\models\Lora\
+2. FaceDetailer - ComfyUI's equivalent of ADetailer
+   ComfyUI Manager -> Custom Nodes Manager -> search "Impact Pack"
+   -> install ComfyUI-Impact-Pack
 
-  1. "Detail Tweaker XL"   (add-detail-xl)
-  2. "XL More Art - Full"  (xl_more_art-full)
+3. Fully restart ComfyUI (close it, relaunch LU AI). A browser refresh
+   is not enough - new model files are only picked up on startup.
 
-MANUAL STEP - ADetailer (biggest win for photoreal faces)
----------------------------------------------------------
-Extensions -> Install from URL -> https://github.com/Bing-su/adetailer
-Restart the WebUI afterwards; it downloads its detection models on first run.
-
-Then apply the settings in QUALITY-SETUP.md.
+4. Build the node chain in QUALITY-SETUP.md section 7, then
+   Workflow -> Export so you never have to rebuild it.
 "@ -ForegroundColor Cyan
