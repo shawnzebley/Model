@@ -48,7 +48,7 @@
         "Node name for S&R": "CheckpointLoaderSimple"
       },
       "widgets_values": [
-        "juggernautXL_v9Rundiffusionphoto2.safetensors"
+        "juggernaut-XL_v9.safetensors"
       ]
     },
     {

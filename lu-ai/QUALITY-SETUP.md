@@ -269,7 +269,7 @@ Run it after the Hi-Res pass, not instead of it. They fix different problems.
 ## 7. Recommended baseline
 
 ```
-Checkpoint:      juggernautXL_v9Rundiffusionphoto2.safetensors
+Checkpoint:      juggernaut-XL_v9.safetensors
 VAE:             sdxl_vae.safetensors  (via Load VAE node)
 Resolution:      1024x1024 | 832x1216 portrait | 1216x832 landscape
 
