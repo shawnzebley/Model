@@ -247,22 +247,54 @@ SDXL spreads its pixel budget across the whole frame, so a face occupying 8% of
 a 1024px image gets ~80px of real detail — which is why anything but a close-up
 comes back with a mushy, uncanny face while the rest of the shot looks great.
 
-This is ADetailer's job in other WebUIs. **ComfyUI's equivalent is the
-`FaceDetailer` node from ComfyUI-Impact-Pack**, which detects faces, re-renders
+This is ADetailer's job in other WebUIs. ComfyUI's equivalent is the
+**`FaceDetailer` node from ComfyUI-Impact-Pack**: it detects faces, re-renders
 each at full resolution, and composites them back.
 
 **Install:** Manager → **Custom Nodes Manager** → search `Impact Pack` → install
 **ComfyUI-Impact-Pack** → restart ComfyUI. On first launch it downloads its
 detection models; give it a minute.
 
-**Use:** place a **FaceDetailer** node after the *final* VAE Decode, before Save
-Image. It needs an image, the model, both conditionings, the vae, and a
-**UltralyticsDetectorProvider** set to `bbox/face_yolov8m.pt`.
+**Add it by hand rather than from a workflow file.** FaceDetailer has around
+thirty widgets and their order changes between Impact Pack versions — placing
+the node yourself gets you the correct defaults for your version, where a
+hand-written JSON would load it mis-configured.
 
-- `denoise`: **0.4** — above 0.5 the face stops matching the body
-- `guide_size` 512, `max_size` 1024, `feather` 5
+**Placement:** after the *final* `VAE Decode` (node 13), before `Save Image`.
 
-Run it after the Hi-Res pass, not instead of it. They fix different problems.
+1. Double-click the canvas → search `FaceDetailer` → place it
+2. Double-click → search `UltralyticsDetectorProvider` → place it, set to
+   `bbox/face_yolov8m.pt`
+3. Wire it up:
+
+| FaceDetailer input | Comes from |
+|---|---|
+| `image` | `VAE Decode (final)` → IMAGE |
+| `model` | the LoRA node's MODEL (or Load Checkpoint if no LoRA) |
+| `clip` | the LoRA node's CLIP (or Load Checkpoint) |
+| `vae` | `Load VAE` |
+| `positive` | `Positive Prompt` → CONDITIONING |
+| `negative` | `Negative Prompt` → CONDITIONING |
+| `bbox_detector` | `UltralyticsDetectorProvider` → BBOX_DETECTOR |
+
+4. Then rewire `Save Image`: drag from FaceDetailer's IMAGE output to
+   `Save Image.images`, replacing the wire from VAE Decode.
+
+**Settings to change from the defaults:**
+
+| Widget | Set to | Why |
+|---|---|---|
+| `denoise` | **0.40** | Above 0.5 the face stops matching the body |
+| `guide_size` | 512 | Resolution each face is re-rendered at |
+| `max_size` | 1024 | Cap for large faces |
+| `feather` | 5 | Blends the composite edge |
+| `cfg` | 4.0 | Match the rest of the graph |
+| `sampler_name` / `scheduler` | `dpmpp_2m` / `karras` | Match the rest |
+
+Leave everything else alone — the SAM and segm options are for a different
+workflow and the defaults are correct.
+
+Run it *after* the Hi-Res pass, not instead of it. They fix different problems.
 
 ---
 
@@ -284,8 +316,24 @@ LoRA:             Detail Tweaker XL @ 0.4
 for 512×512 gives worse output than 1024×1024, not faster-and-similar. Valid
 sizes: 1024×1024, 1152×896, 896×1152, 1216×832, 832×1216, 1344×768, 768×1344.
 
-Once the graph works, **Workflow → Export** and keep it. Rebuilding this by hand
-every session is how people give up on ComfyUI.
+### Ready-built workflows
+
+Two files, both loading fully wired — drag either onto the canvas:
+
+| File | Contains |
+|---|---|
+| `juggernaut-hires.json` | §2 VAE + §3 sampler + §4 two-pass upscale. Confirmed working. |
+| `juggernaut-hires-lora.json` | The same plus the §5 `Load LoRA` node in the MODEL/CLIP path. |
+
+The LoRA version expects `add-detail-xl.safetensors` in `models\loras`. If your
+downloaded file has a different name, open the node's dropdown and pick the real
+one. To test the graph before downloading any LoRA, right-click the LoRA node →
+**Bypass** — it then passes MODEL and CLIP straight through.
+
+FaceDetailer is not in either file, deliberately — see §6.
+
+Once a graph works, **Workflow → Save As** and keep it. Rebuilding by hand every
+session is how people give up on ComfyUI.
 
 ---
 
