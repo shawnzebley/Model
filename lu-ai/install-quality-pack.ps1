@@ -6,48 +6,91 @@
   models\upscale_models) that differ from other WebUIs, which is the usual
   reason a downloaded file never shows up in a node dropdown.
 
-  Usage - right-click the LU AI desktop shortcut, Properties, and copy the
-  folder from "Start in". Then:
+  LU AI installs to C:\Program Files\Locally Uncensored, which Windows
+  protects - so this MUST be run from an elevated (Administrator) PowerShell
+  or every download will fail with an access-denied error. The script checks
+  and tells you if you are not elevated.
 
-      powershell -ExecutionPolicy Bypass -File .\install-quality-pack.ps1 -ComfyUIRoot "C:\path\to\ComfyUI"
+  RUN IT:
+    1. Start menu -> type "powershell"
+    2. Right-click "Windows PowerShell" -> Run as administrator
+    3. Paste:
 
-  Run with no arguments from inside the ComfyUI folder and it will find itself.
+       powershell -ExecutionPolicy Bypass -File "<path to this file>\install-quality-pack.ps1"
 
   The two detail LoRAs are Civitai-hosted and need a logged-in download, and
   Impact Pack installs through ComfyUI Manager; instructions print at the end.
 #>
 
 param(
-    [string]$ComfyUIRoot = (Get-Location).Path
+    # Defaults to the standard LU AI install location.
+    [string]$ComfyUIRoot = 'C:\Program Files\Locally Uncensored'
 )
 
 $ErrorActionPreference = 'Stop'
 
+function Test-Elevated {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Resolve-ComfyUIRoot {
     param([string]$Start)
 
-    # A ComfyUI root holds models\checkpoints. Portable builds nest the real
-    # root one level down (ComfyUI_windows_portable\ComfyUI), so check there
-    # and in a parent before giving up.
-    $candidates = @(
+    if (-not (Test-Path $Start)) { return $null }
+
+    # A ComfyUI root holds models\checkpoints. Packaged apps bury it at various
+    # depths (resources\ComfyUI, app\ComfyUI, ComfyUI_windows_portable\ComfyUI),
+    # so try the common spots first, then fall back to a bounded search.
+    $known = @(
         $Start,
         (Join-Path $Start 'ComfyUI'),
-        (Split-Path -Parent $Start)
+        (Join-Path $Start 'resources\ComfyUI'),
+        (Join-Path $Start 'app\ComfyUI'),
+        (Join-Path $Start 'ComfyUI_windows_portable\ComfyUI')
     )
-    foreach ($c in $candidates) {
-        if ($c -and (Test-Path (Join-Path $c 'models\checkpoints'))) { return $c }
+    foreach ($c in $known) {
+        if (Test-Path (Join-Path $c 'models\checkpoints')) { return $c }
     }
+
+    Write-Host "Searching for the models folder under $Start ..." -ForegroundColor DarkGray
+    $hit = Get-ChildItem -Path $Start -Directory -Recurse -Depth 4 -Filter 'checkpoints' `
+             -ErrorAction SilentlyContinue |
+           Where-Object { $_.Parent.Name -eq 'models' } |
+           Select-Object -First 1
+    if ($hit) { return $hit.Parent.Parent.FullName }
+
     return $null
+}
+
+if (-not (Test-Elevated)) {
+    Write-Host ""
+    Write-Host "NOT RUNNING AS ADMINISTRATOR" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "LU AI lives under C:\Program Files, which Windows protects. Without"
+    Write-Host "elevation every download here will fail with access denied."
+    Write-Host ""
+    Write-Host "  1. Start menu -> type: powershell"
+    Write-Host "  2. Right-click 'Windows PowerShell' -> Run as administrator"
+    Write-Host "  3. Re-run this script from that window"
+    Write-Host ""
+    exit 1
 }
 
 $root = Resolve-ComfyUIRoot $ComfyUIRoot
 if (-not $root) {
     Write-Host "Could not find a ComfyUI install at '$ComfyUIRoot'." -ForegroundColor Red
     Write-Host ""
-    Write-Host "Expected a 'models\checkpoints' folder. To find the right path:"
-    Write-Host "  1. Right-click the LU AI shortcut on your desktop -> Properties"
-    Write-Host "  2. Copy the 'Start in' path"
-    Write-Host "  3. Re-run:  .\install-quality-pack.ps1 -ComfyUIRoot `"<that path>`""
+    Write-Host "Expected to find a 'models\checkpoints' folder somewhere beneath it."
+    Write-Host ""
+    Write-Host "Show me what's actually in there and I can point you at the right path:"
+    Write-Host ""
+    Write-Host "  Get-ChildItem -Path '$ComfyUIRoot' -Directory -Recurse -Depth 3 |" -ForegroundColor White
+    Write-Host "    Select-Object -ExpandProperty FullName" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Or pass the correct folder directly:"
+    Write-Host "  .\install-quality-pack.ps1 -ComfyUIRoot `"<path containing models\checkpoints>`""
     exit 1
 }
 

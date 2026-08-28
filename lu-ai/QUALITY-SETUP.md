@@ -3,30 +3,60 @@
 Setup notes for the local ComfyUI install launched by the **LU AI** desktop
 shortcut, running **Juggernaut XL v9**.
 
-Run `install-quality-pack.ps1` from your ComfyUI folder to download the VAE and
-upscalers into the right places, then build the node chain in §7.
+Run `install-quality-pack.ps1` **from an Administrator PowerShell** to download
+the VAE and upscalers into the right places, then build the node chain in §7.
 
 ---
 
-## 0. First: find your ComfyUI folder
+## 0. First: the install path and the admin problem
 
-Everything below needs the folder ComfyUI actually lives in. To find it:
+LU AI is installed at:
 
-1. Right-click the **LU AI** shortcut on your desktop → **Properties**
-2. Look at **Target** and **Start in**
+```
+C:\Program Files\Locally Uncensored
+```
 
-You'll see a path like `C:\ComfyUI_windows_portable\...`. The folder containing
-`ComfyUI\models\` is what these notes call **`<ComfyUI>`**. Confirm by opening it —
-you should see a `models` folder with `checkpoints`, `loras`, and `vae` inside,
-and `juggernautXL_v9....safetensors` sitting in `checkpoints`.
+**Two things follow from that, and both will bite you if skipped.**
+
+### You need an Administrator PowerShell
+
+Windows protects `C:\Program Files`. A normal PowerShell window cannot write
+there, so every download will fail with access denied. Drag-and-drop in File
+Explorer will pop a "You'll need to provide administrator permission" dialog —
+click Continue and it works, but the script needs real elevation:
+
+1. Start menu → type `powershell`
+2. **Right-click** "Windows PowerShell" → **Run as administrator**
+3. Run the script from that window
+
+The script checks for elevation and stops with instructions if it's missing,
+rather than failing three times over.
+
+### Find the actual models folder
+
+"Locally Uncensored" is a packaged app, so ComfyUI may sit a level or two down —
+`resources\ComfyUI\`, `app\ComfyUI\`, or right at the top. What you're looking
+for is the folder containing `models\checkpoints\` (with your Juggernaut file
+inside). These notes call that folder **`<ComfyUI>`**.
+
+The script searches the common locations automatically. To see the layout yourself:
+
+```powershell
+Get-ChildItem -Path 'C:\Program Files\Locally Uncensored' -Directory -Recurse -Depth 3 |
+  Select-Object -ExpandProperty FullName
+```
 
 > **ComfyUI's folder names are lowercase and differ from other WebUIs.** It's
 > `models\vae\`, `models\loras\`, `models\upscale_models\` — not `VAE`, `Lora`,
 > `ESRGAN`. Files in the wrong folder simply won't appear in the node dropdowns.
 
-If the LU AI package uses a shared model folder elsewhere, check
-`<ComfyUI>\extra_model_paths.yaml` — if that file exists and is uncommented, it
-redirects where models load from, and you should put files there instead.
+### If models still don't appear
+
+Check `<ComfyUI>\extra_model_paths.yaml`. Packaged installs often use it to point
+model loading at a writable user folder (something under `%USERPROFILE%` or
+`AppData`) precisely *because* Program Files is locked down. If that file exists
+with uncommented entries, put the downloads where it points instead — and you
+won't need admin at all. The script warns you when it finds one.
 
 ---
 
@@ -270,6 +300,7 @@ cartoon, illustration, 3d render, painting, plastic skin, airbrushed, watermark,
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Download fails, "access denied" | Program Files needs elevation | Run PowerShell as Administrator (§0) |
 | Model not in the dropdown | Wrong folder, or ComfyUI not restarted | Check lowercase `vae` / `loras` / `upscale_models` (§0), then restart — not just refresh |
 | Still not there after restart | `extra_model_paths.yaml` redirects the path | Put the file where that file points (§0) |
 | Gray / washed out | Wrong VAE connected | Wire `Load VAE` into VAE Decode (§2) |
