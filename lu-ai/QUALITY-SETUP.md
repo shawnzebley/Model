@@ -1,30 +1,33 @@
 # LU AI — Photorealism Pack for Juggernaut XL v9 (ComfyUI)
 
-Setup notes for the local ComfyUI install launched by the **LU AI** desktop
-shortcut, running **Juggernaut XL v9**.
+Setup notes for the ComfyUI image engine that **LU AI** (Locally Uncensored)
+installs and runs underneath itself, using **Juggernaut XL v9**.
 
 Run `install-quality-pack.ps1` to download the VAE and upscalers into the right
 places, then build the node chain in §7. No admin rights needed — see §0.
 
 ---
 
-## 0. Where things actually live
+## 0. How LU AI is put together
 
-LU AI splits across two locations, which is what makes this confusing:
+LU AI is a front end for local AI engines. Its README advertises auto-detection
+of twelve backends (Ollama, LM Studio, vLLM, KoboldCpp, llama.cpp, and so on) —
+**all of which are text LLM engines.** For images it installs and drives a
+separate engine: **ComfyUI**. That's the "one click installs the engine for you"
+step, and it's what created the folder below.
 
-| | Path |
-|---|---|
-| Launcher / UI shell | `C:\Program Files\Locally Uncensored` |
-| **ComfyUI backend and all models** | **`C:\Users\13024\ComfyUI`** |
+| Piece | Path | What it is |
+|---|---|---|
+| LU AI launcher | `C:\Program Files\Locally Uncensored` | The app shell you double-click. Packaged bundle — nothing to edit. |
+| **ComfyUI engine** | **`C:\Users\13024\ComfyUI`** | The image generator. Models, custom nodes, and everything in this guide. |
 
-Everything in this guide targets the second one. It's inside your user profile,
-so **no administrator rights are needed** — ignore the Program Files folder
-entirely; it holds only the packaged app shell.
+Everything here targets the second path. It's in the user profile, so **no
+administrator rights are needed** — ignore the Program Files folder entirely.
 
 Your model folders:
 
 ```
-C:\Users\13024\ComfyUI\models\checkpoints      <- Juggernaut XL v9 lives here
+C:\Users\13024\ComfyUI\models\checkpoints      <- Juggernaut XL v9
 C:\Users\13024\ComfyUI\models\vae              <- §2
 C:\Users\13024\ComfyUI\models\upscale_models   <- §4
 C:\Users\13024\ComfyUI\models\loras            <- §5
@@ -33,9 +36,6 @@ C:\Users\13024\ComfyUI\models\loras            <- §5
 > **ComfyUI's folder names are lowercase and differ from other WebUIs.** It's
 > `vae`, `loras`, `upscale_models` — not `VAE`, `Lora`, `ESRGAN`. A file in the
 > wrong folder doesn't error; it just never appears in the node dropdown.
-
-Create `vae`, `upscale_models`, or `loras` if they don't exist yet — ComfyUI
-picks them up on startup.
 
 ### Verified downloads
 
@@ -47,23 +47,36 @@ These three URLs are confirmed working (sizes as installed):
 | `4x-UltraSharp.pth` | 63.9 MB | `models\upscale_models` |
 | `4x_NMKD-Siax_200k.pth` | 63.9 MB | `models\upscale_models` |
 
-If a re-download ever comes back far smaller than these, it's an HTML error page,
-not a model — delete it and use the fallback mirror in the installer.
+If a re-download ever comes back far smaller, it's an HTML error page, not a
+model — delete it and use the fallback mirror in the installer.
 
-**Run the installer** from a normal PowerShell window:
+### Reaching the ComfyUI node canvas
+
+Sections 4–6 need ComfyUI's node graph. If LU AI shows only a prompt box and a
+Generate button, the graph is still there — ComfyUI runs as a local web server,
+and you can open its native interface directly in a browser.
+
+**With LU AI running**, find the port:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\install-quality-pack.ps1"
+Get-Process python*,ComfyUI* -ErrorAction SilentlyContinue | ForEach-Object {
+  $p = $_
+  Get-NetTCPConnection -State Listen -OwningProcess $_.Id -ErrorAction SilentlyContinue |
+    Select-Object @{n='Process';e={$p.ProcessName}}, LocalPort
+}
 ```
 
-If Windows refuses to run it because it was downloaded from the internet:
+Then open `http://127.0.0.1:<port>` in a browser — `8188` is ComfyUI's default.
+A canvas of connected boxes means you have full access and the whole guide
+applies. Bookmark it.
 
-```powershell
-Unblock-File "$env:USERPROFILE\Desktop\install-quality-pack.ps1"
-```
+If no node canvas is reachable, LU AI is driving ComfyUI through its API with a
+fixed internal workflow. Sections 4–6 aren't available through LU AI's own UI;
+§3 (sampler, steps, CFG) applies wherever those controls are exposed, and §8
+(prompting) works regardless.
 
-After any change here, **fully quit and relaunch LU AI**. A browser refresh
-won't do it — model files are only scanned when the backend starts.
+**After adding any model file, fully quit and relaunch LU AI.** A browser refresh
+won't do it — models are only scanned when the engine starts.
 
 ---
 
