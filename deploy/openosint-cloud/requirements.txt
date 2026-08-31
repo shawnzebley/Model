@@ -1,0 +1,5 @@
+# Installs the cloned OpenOSINT source, which pulls in everything the gateway
+# needs (fastapi, uvicorn, asyncpg, authlib, itsdangerous, mcp, and the tool
+# implementations in openosint.tools). The cloud/ package itself stays as
+# source at the app root, which is where uvicorn imports cloud.main from.
+.

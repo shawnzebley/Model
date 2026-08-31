@@ -1,0 +1,66 @@
+Fix: run the FastMCP session manager's lifespan so /mcp works.
+
+cloud/main.py mounts create_mcp_asgi_app() as a sub-app. Mounting a Starlette
+sub-app does not run its lifespan, so the FastMCP session manager's task group
+is never initialized and every request to /mcp fails with a 500:
+
+    RuntimeError: Task group is not initialized. Make sure to use run().
+
+Reproduced against mcp 1.29.1 with OpenOSINT v2.27.0. The parent app's lifespan
+has to enter the session manager's run() context. Worth sending upstream.
+
+--- a/cloud/routes/mcp_gateway.py
++++ b/cloud/routes/mcp_gateway.py
+@@ -14,6 +14,7 @@
+ 
+ import asyncio
+ import logging
++from contextlib import asynccontextmanager
+ from contextvars import ContextVar
+ 
+ from mcp.server.fastmcp import FastMCP
+@@ -200,3 +201,17 @@
+     """Return the FastMCP Starlette app wrapped with the auth middleware."""
+     starlette_app = _mcp.streamable_http_app()
+     return _AuthMiddleware(starlette_app)
++
++
++@asynccontextmanager
++async def mcp_session_lifespan():
++    """Run the FastMCP session manager's task group.
++
++    Mounting streamable_http_app() as a sub-app does not run its lifespan, so
++    the session manager's task group is never initialized and every request to
++    /mcp fails with "Task group is not initialized. Make sure to use run()."
++    The parent app's lifespan must enter this. Call create_mcp_asgi_app()
++    first — it builds the session manager this depends on.
++    """
++    async with _mcp.session_manager.run():
++        yield
+--- a/cloud/main.py
++++ b/cloud/main.py
+@@ -18,7 +18,7 @@
+ from cloud.config import DATABASE_URL, resolve_session_secret
+ from cloud.routes import dashboard, enrich, oauth as oauth_routes, usage
+ from cloud.routes import keys as keys_route
+-from cloud.routes.mcp_gateway import create_mcp_asgi_app
++from cloud.routes.mcp_gateway import create_mcp_asgi_app, mcp_session_lifespan
+ 
+ logging.basicConfig(
+     level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s", force=True
+@@ -27,10 +27,11 @@
+ 
+ @asynccontextmanager
+ async def _lifespan(app: FastAPI):
+-    await db.init_pool()
+-    keys.init_keys()
+-    yield
+-    await db.close_pool()
++    async with mcp_session_lifespan():
++        await db.init_pool()
++        keys.init_keys()
++        yield
++        await db.close_pool()
+ 
+ 
+ def create_app() -> FastAPI:

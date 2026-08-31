@@ -5,6 +5,26 @@ ships an MCP server. This repo wires it in as a project-scoped MCP server plus
 an `osint-recon` skill, so the tools are available in any Claude Code session
 opened here.
 
+## Which surface you are on
+
+Claude Code and the Claude apps reach MCP servers differently, and that decides
+what you can run where.
+
+| Surface | Transport | Tools | Setup |
+|---|---|---|---|
+| **Claude Code** (this repo) | local stdio via `.mcp.json` | all 23 | automatic — read on |
+| **claude.ai chat** | remote HTTPS connector | 7 | [deploy the gateway](../deploy/openosint-cloud/README.md) |
+| **Cowork** | remote HTTPS connector | 7 | [deploy the gateway](../deploy/openosint-cloud/README.md) |
+
+Chat and Cowork connect from Anthropic's infrastructure, not your machine, so
+they need a publicly reachable HTTPS MCP endpoint — a local stdio server cannot
+be connected, and neither surface reads this repo's `.mcp.json`. The gateway
+deploy covers those two; the rest of this page is the Claude Code setup.
+
+The skill works on all three. Claude Code reads it from `.claude/skills/`;
+for chat and Cowork run `scripts/package-skill.sh` and upload the zip under
+Customize → Skills.
+
 ## What got added
 
 | File | Purpose |
@@ -15,6 +35,8 @@ opened here.
 | `.claude/settings.json` | SessionStart hook that runs the setup script |
 | `.claude/skills/osint-recon/SKILL.md` | Tells Claude which tool fits which target |
 | `.env.example` | Every API key the tools can use, all optional |
+| `deploy/openosint-cloud/` | Heroku deploy for the chat/Cowork connector |
+| `scripts/package-skill.sh` | Zips the skill for chat/Cowork upload |
 
 ## First run
 

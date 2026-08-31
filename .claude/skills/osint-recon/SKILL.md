@@ -53,6 +53,24 @@ When a tool reports a missing key or binary, say which one and what it would
 add — then keep going with the tools that do work. A blocked tool is not a
 blocked investigation.
 
+## If you are on the hosted connector
+
+On claude.ai chat or Cowork the tools come from the OpenOSINT Cloud connector,
+which differs from the local Claude Code setup in two ways that change how you
+call them:
+
+- **Seven tools only**: `search_ip`, `search_ip2location`, `search_abuseipdb`,
+  `search_dns`, `search_domain`, `search_virustotal`, `search_censys`.
+  Infrastructure and hosts only — no breach, email, username, phone, or paste
+  lookups, and no graph tools. Say so rather than improvising when a request
+  needs one of those.
+- **One argument, always `target`** — `search_dns(target="example.com")`, not
+  `domain=`. The local tools take `domain`, `ip`, `email` and friends; the
+  hosted ones do not.
+
+Calls are metered against a credit balance, so prefer the cheap keyless lookups
+(`search_dns`, `search_domain`) before spending on the rest.
+
 ## How to run an investigation
 
 1. Start broad and cheap: DNS and WHOIS for a domain, `search_ip` for an
