@@ -16,10 +16,16 @@ what you can run where.
 | **claude.ai chat** | remote HTTPS connector | 7 | [deploy the gateway](../deploy/openosint-cloud/README.md) |
 | **Cowork** | remote HTTPS connector | 7 | [deploy the gateway](../deploy/openosint-cloud/README.md) |
 
+**Prefer Claude Code.** It is reachable from a terminal, the desktop app, or
+[claude.ai/code](https://claude.ai/code) in any browser, gives you all 23 tools,
+and needs nothing hosted. For most work that is the whole answer.
+
 Chat and Cowork connect from Anthropic's infrastructure, not your machine, so
-they need a publicly reachable HTTPS MCP endpoint — a local stdio server cannot
-be connected, and neither surface reads this repo's `.mcp.json`. The gateway
-deploy covers those two; the rest of this page is the Claude Code setup.
+they can only reach an MCP server already running on the public internet. A
+local stdio server cannot be connected, neither surface reads this repo's
+`.mcp.json`, and there is no OSINT connector in Claude's directory to enable.
+Getting the tools there means running a service yourself — the gateway deploy
+does that, and is optional.
 
 The skill works on all three. Claude Code reads it from `.claude/skills/`;
 for chat and Cowork run `scripts/package-skill.sh` and upload the zip under
