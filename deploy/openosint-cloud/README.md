@@ -53,29 +53,52 @@ the pin in `build.sh`.
 
 ## Deploy
 
-Prerequisites: Heroku CLI logged in (`heroku login`), Python 3, git.
+Prerequisites: Heroku CLI logged in (`heroku login`), Python 3, git. Run this
+from your own machine — it needs network access to heroku.com.
 
-### 1. Build
+### The short version
+
+```bash
+deploy/openosint-cloud/deploy-heroku.sh your-app-name
+```
+
+That builds, creates the app, provisions Postgres, generates and sets both
+secrets, pushes, loads the schema, and mints an API key — printing the key at
+the end. It prompts before creating anything and is safe to re-run: an existing
+app, addon, and config vars are reused rather than replaced.
+
+Then check it before wiring it up:
+
+```bash
+deploy/openosint-cloud/verify.sh https://your-app-name.herokuapp.com <api-key>
+```
+
+A clean run reports an MCP initialize handshake. A 500 almost always means the
+lifespan patch did not make it into the deploy, and the script says so.
+
+### Step by step
+
+If you would rather run it yourself, or something above failed partway:
+
+**1. Build.**
 
 ```bash
 deploy/openosint-cloud/build.sh
 ```
 
-Clones OpenOSINT at `v2.27.0` (SHA-pinned, and it aborts if the tag has moved),
+Clones OpenOSINT at `v2.27.0` (SHA-pinned, aborting if the tag has moved),
 applies the patch, and adds the Heroku overlay. Output: `.build/openosint-cloud`,
-a git repo ready to push.
+a git repo ready to push. The overlay replaces upstream's `Procfile` — theirs
+runs the web UI (`openosint web`), not the gateway.
 
-The overlay replaces upstream's `Procfile` — theirs runs the web UI
-(`openosint web`), not the gateway.
-
-### 2. Create the app
+**2. Create the app.**
 
 ```bash
 cd .build/openosint-cloud
 APP=your-app-name
 
 heroku create $APP
-heroku addons:create heroku-postgresql:essential-0 -a $APP
+heroku addons:create heroku-postgresql:essential-0 -a $APP --wait
 
 heroku config:set -a $APP \
   SESSION_SECRET_KEY="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')" \
@@ -87,31 +110,27 @@ heroku config:set -a $APP IP2LOCATION_API_KEY=...
 
 Both secrets are required once `DATABASE_URL` is set: the app refuses to boot
 without `SESSION_SECRET_KEY`, and `CONFIG_ENCRYPTION_KEY` is the Fernet key
-encrypting stored BYOK secrets. **Losing `CONFIG_ENCRYPTION_KEY` makes every
-stored BYOK key unreadable** — keep a copy.
+encrypting stored BYOK secrets. **Losing `CONFIG_ENCRYPTION_KEY`, or
+regenerating it on an existing deploy, makes every stored BYOK key
+unreadable** — keep a copy.
 
-### 3. Push and load the schema
+**3. Push, then load the schema and mint a key.**
 
 ```bash
+cp ../../deploy/openosint-cloud/dbsetup.py .
+git add -A && git commit -m "Add dbsetup.py"
 git push heroku HEAD:main
-heroku pg:psql -a $APP -f db/init.sql
+
+heroku run python dbsetup.py -a $APP
 ```
 
-### 4. Mint yourself a key
+`dbsetup.py` runs on the dyno, so no local `psql` is needed. It loads
+`db/init.sql` and prints a freshly generated API key once — save it. Re-running
+is safe; `--mint` alone adds another key without touching the schema.
 
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
+`mint-key.sql` is there if you would rather do it in SQL with your own key.
 
-Paste it into `mint-key.sql`, then:
-
-```bash
-heroku pg:psql -a $APP -f ../../deploy/openosint-cloud/mint-key.sql
-```
-
-This key is the Bearer token the connector sends. Treat it as a password.
-
-### 5. Store BYOK keys (optional)
+### Store BYOK keys (optional)
 
 For `search_ip`, `search_abuseipdb`, `search_virustotal`, `search_censys`:
 
@@ -124,21 +143,6 @@ curl -X POST https://$APP.herokuapp.com/v1/keys \
 
 Providers: `ipinfo`, `abuseipdb`, `virustotal`, `censys`. Censys takes both
 credentials as `<api_id>:<api_secret>`.
-
-### 6. Verify before wiring it up
-
-```bash
-curl -sS -X POST https://$APP.herokuapp.com/mcp/ \
-  -H "Authorization: Bearer <your-minted-key>" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-       "protocolVersion":"2025-06-18","capabilities":{},
-       "clientInfo":{"name":"curl","version":"0"}}}'
-```
-
-A JSON-RPC result means the endpoint is live. A 500 mentioning "Task group is
-not initialized" means the patch did not make it into the deploy.
 
 ## Add it to chat and Cowork
 
