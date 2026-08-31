@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Launcher for the OpenOSINT MCP server.
+#
+# Resolution order:
+#   1. the repo-local venv created by scripts/openosint-setup.sh
+#   2. an openosint-mcp already on PATH
+#   3. uvx, which fetches the pinned version on demand
+#
+# API keys are read from .env at the repo root (see .env.example). MCP servers
+# are launched with a bare environment, so sourcing it here is what makes the
+# key-gated tools work.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OPENOSINT_VERSION="${OPENOSINT_VERSION:-2.27.0}"
+
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
+
+VENV_BIN="$REPO_ROOT/.venv-openosint/bin/openosint-mcp"
+if [[ -x "$VENV_BIN" ]]; then
+  exec "$VENV_BIN" "$@"
+fi
+
+if command -v openosint-mcp >/dev/null 2>&1; then
+  exec openosint-mcp "$@"
+fi
+
+if command -v uvx >/dev/null 2>&1; then
+  exec uvx --from "openosint==${OPENOSINT_VERSION}" openosint-mcp "$@"
+fi
+
+echo "openosint-mcp not found. Run scripts/openosint-setup.sh first." >&2
+exit 1

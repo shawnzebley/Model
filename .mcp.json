@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "openosint": {
+      "command": "./scripts/openosint-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

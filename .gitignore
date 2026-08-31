@@ -1,0 +1,6 @@
+.venv-openosint/
+.env
+__pycache__/
+*.pyc
+reports/
+.build/
