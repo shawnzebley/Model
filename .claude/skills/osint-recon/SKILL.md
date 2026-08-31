@@ -74,6 +74,33 @@ phone, or paste lookups, and no graph tools. Say so plainly rather than
 improvising when a request needs one of those; the full 23 are available in
 Claude Code.
 
+## A failed lookup is not an empty result
+
+Some tools report a lookup that *failed* as a confident negative finding. This
+is verified, not hypothetical. Upstream's `search_dns` prints
+
+    [!] No SPF record found — anyone can spoof email from this domain.
+
+when the apex TXT query failed, and not only when the domain genuinely
+publishes no SPF record. A large TXT response comes back truncated over UDP and
+has to be retried over TCP port 53; hosted containers and locked-down networks
+commonly block that retry, so the query dies and the tool still prints the line
+above. `anthropic.com`, which does publish SPF, reproduces it.
+
+Before repeating any "no record", "not found", or "nothing exposed" result:
+
+- Look at whether related lookups in the same output succeeded. DMARC and DKIM
+  returning real values while SPF alone is "missing" is the signature of a
+  failed query, not of a real gap.
+- Corroborate a negative that carries weight against a second source before
+  writing it up.
+- Report an unconfirmed negative as "could not confirm", never as "does not
+  exist" — and never repeat the spoofing warning to a customer or in anything
+  outward-facing on the strength of a single tool run.
+
+The general rule: a tool that cannot reach the network is not a tool reporting
+an empty world. When you cannot tell which one you are looking at, say so.
+
 ## How to run an investigation
 
 1. Start broad and cheap: DNS and WHOIS for a domain, `search_ip` for an
