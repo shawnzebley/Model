@@ -13,8 +13,8 @@ what you can run where.
 | Surface | Transport | Tools | Setup |
 |---|---|---|---|
 | **Claude Code** (this repo) | local stdio via `.mcp.json` | all 23 | automatic — read on |
-| **claude.ai chat** | remote HTTPS connector | 7 | [deploy the gateway](../deploy/openosint-cloud/README.md) |
-| **Cowork** | remote HTTPS connector | 7 | [deploy the gateway](../deploy/openosint-cloud/README.md) |
+| **claude.ai chat** | remote HTTPS connector | 7 | [deploy a connector](#hosted-connectors) |
+| **Cowork** | remote HTTPS connector | 7 | [deploy a connector](#hosted-connectors) |
 
 **Prefer Claude Code.** It is reachable from a terminal, the desktop app, or
 [claude.ai/code](https://claude.ai/code) in any browser, gives you all 23 tools,
@@ -24,8 +24,21 @@ Chat and Cowork connect from Anthropic's infrastructure, not your machine, so
 they can only reach an MCP server already running on the public internet. A
 local stdio server cannot be connected, neither surface reads this repo's
 `.mcp.json`, and there is no OSINT connector in Claude's directory to enable.
-Getting the tools there means running a service yourself — the gateway deploy
-does that, and is optional.
+Getting the tools there means running a service yourself. Two optional deploys
+do that.
+
+<a id="hosted-connectors"></a>
+
+| | [Cloudflare Worker](../deploy/openosint-worker/README.md) | [Heroku gateway](../deploy/openosint-cloud/README.md) |
+|---|---|---|
+| Cost | free | ~$5/mo (Postgres) |
+| Deploy | `wrangler deploy` | build, app, addon, secrets, schema |
+| Code | reimplementation over HTTP APIs | upstream's own, patched |
+| Keyless tools | DNS, WHOIS, subdomains | DNS, subdomains |
+| Extras | — | credit metering, BYOK key store |
+
+Prefer the Worker unless you need metering or multi-user key storage. Neither is
+needed for Claude Code.
 
 The skill works on all three. Claude Code reads it from `.claude/skills/`;
 for chat and Cowork run `scripts/package-skill.sh` and upload the zip under

@@ -26,10 +26,16 @@ not a skill, not a plugin — can give them a local tool. There is also no OSINT
 connector in Claude's connector directory to switch on.
 
 The only way to get these tools into chat or Cowork is to run a small HTTPS
-service yourself. `deploy/openosint-cloud/` is a complete, tested kit for that
-(Heroku, ~$5/mo, 7 infrastructure tools rather than 23). It is **optional** —
-skip it entirely unless you specifically need chat or Cowork, rather than
-Claude Code, to do this work.
+service yourself. Two optional kits are here, both giving 7 infrastructure tools
+rather than 23:
+
+- **[deploy/openosint-worker/](deploy/openosint-worker/README.md)** — Cloudflare
+  Worker. Free, no database, one `wrangler deploy`. Recommended.
+- **[deploy/openosint-cloud/](deploy/openosint-cloud/README.md)** — upstream's
+  own gateway on Heroku, ~$5/mo, adds credit metering and multi-user key storage.
+
+Both are **optional** — skip them unless you specifically need chat or Cowork,
+rather than Claude Code, to do this work.
 
 Setup, API keys, and the full tool list: [docs/openosint.md](docs/openosint.md).
 

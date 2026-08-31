@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openosint-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  // nodejs_compat is not needed: the Worker uses only fetch and Web Crypto.
+  "observability": { "enabled": true }
+  // Secrets are set with `wrangler secret put`, never committed here:
+  //   MCP_TOKEN (required), IPINFO_TOKEN, ABUSEIPDB_API_KEY,
+  //   VIRUSTOTAL_API_KEY, SHODAN_API_KEY
+}
