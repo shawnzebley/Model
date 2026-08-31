@@ -28,6 +28,7 @@ const UA = "openosint-worker/1.0";
 async function getJSON(
   url: string,
   headers: Record<string, string> = {},
+  opts: { authenticated?: boolean } = {},
 ): Promise<{ ok: true; data: any } | { ok: false; error: string }> {
   try {
     const res = await fetch(url, {
@@ -35,10 +36,20 @@ async function getJSON(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) {
-      // 401/403 almost always means the key is wrong, which is worth saying
-      // plainly rather than surfacing a bare status code.
+      // On a call that actually sent credentials, 401/403 almost always means
+      // the key is wrong, which is worth saying plainly rather than surfacing a
+      // bare status code. On a keyless endpoint it cannot mean that, and saying
+      // so sends the reader hunting for a key that does not exist — an
+      // intercepting proxy, a WAF, or an egress policy is the likelier cause.
+      // Credentials travel by header for some upstreams and by query string for
+      // others, so the call site states this rather than it being sniffed here.
       if (res.status === 401 || res.status === 403) {
-        return { ok: false, error: `upstream rejected the API key (HTTP ${res.status})` };
+        return {
+          ok: false,
+          error: opts.authenticated
+            ? `upstream rejected the API key (HTTP ${res.status})`
+            : `upstream refused the request (HTTP ${res.status}); this endpoint takes no API key, so a proxy, WAF, or network policy is the likely cause`,
+        };
       }
       if (res.status === 404) return { ok: false, error: "not found upstream (HTTP 404)" };
       if (res.status === 429) return { ok: false, error: "rate limited upstream (HTTP 429)" };
@@ -206,7 +217,10 @@ export async function searchIp(ip: string, env: Env): Promise<string> {
   if (!v) return `Error: '${ip}' is not a valid IP address.`;
 
   const q = env.IPINFO_TOKEN ? `?token=${encodeURIComponent(env.IPINFO_TOKEN)}` : "";
-  const r = await getJSON(`https://ipinfo.io/${encodeURIComponent(v)}/json${q}`);
+  const r = await getJSON(`https://ipinfo.io/${encodeURIComponent(v)}/json${q}`, {}, {
+    // ipinfo serves anonymous callers too; only a present token can be rejected.
+    authenticated: Boolean(env.IPINFO_TOKEN),
+  });
   if (!r.ok) return `[IP] ${v}\nLookup failed: ${r.error}`;
 
   const d = r.data;
@@ -229,6 +243,7 @@ export async function searchAbuseipdb(ip: string, env: Env): Promise<string> {
   const r = await getJSON(
     `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(v)}&maxAgeInDays=90`,
     { Key: env.ABUSEIPDB_API_KEY },
+    { authenticated: true },
   );
   if (!r.ok) return `[ABUSEIPDB] ${v}\nLookup failed: ${r.error}`;
 
@@ -254,7 +269,7 @@ export async function searchVirustotal(target: string, env: Env): Promise<string
   if (!ip && !domain) return `Error: '${target}' is not a valid domain or IP address.`;
 
   const path = ip ? `ip_addresses/${encodeURIComponent(ip)}` : `domains/${encodeURIComponent(domain!)}`;
-  const r = await getJSON(`https://www.virustotal.com/api/v3/${path}`, { "x-apikey": env.VIRUSTOTAL_API_KEY });
+  const r = await getJSON(`https://www.virustotal.com/api/v3/${path}`, { "x-apikey": env.VIRUSTOTAL_API_KEY }, { authenticated: true });
   if (!r.ok) return `[VIRUSTOTAL] ${ip ?? domain}\nLookup failed: ${r.error}`;
 
   const attr = r.data?.data?.attributes ?? {};
@@ -277,6 +292,8 @@ export async function searchShodan(ip: string, env: Env): Promise<string> {
 
   const r = await getJSON(
     `https://api.shodan.io/shodan/host/${encodeURIComponent(v)}?key=${encodeURIComponent(env.SHODAN_API_KEY)}`,
+    {},
+    { authenticated: true },
   );
   if (!r.ok) {
     if (r.error.includes("404")) return `[SHODAN] ${v}\nNo information available for this IP.`;
