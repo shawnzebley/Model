@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  worker:
+    name: Worker typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/openosint-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+
+  scripts:
+    name: Shell syntax and JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Discovery is by shebang rather than by .sh extension, so extensionless
+      # scripts such as scripts/openosint-mcp are covered too.
+      - name: Syntax-check shell scripts
+        run: |
+          set -uo pipefail
+          status=0
+          files=$(grep -rlE '^#!.*\b(bash|sh)\b' . \
+                    --exclude-dir=.git --exclude-dir=node_modules || true)
+          if [ -z "$files" ]; then
+            echo "No shell scripts found — expected at least one." >&2
+            exit 1
+          fi
+          for f in $files; do
+            if bash -n "$f"; then
+              echo "ok   $f"
+            else
+              echo "FAIL $f" >&2
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Parse JSON config
+        run: |
+          set -uo pipefail
+          status=0
+          for f in .mcp.json .claude/settings.json deploy/openosint-worker/package.json; do
+            if python3 -m json.tool "$f" > /dev/null; then
+              echo "ok   $f"
+            else
+              echo "FAIL $f" >&2
+              status=1
+            fi
+          done
+          exit $status
