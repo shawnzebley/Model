@@ -23,17 +23,26 @@ export interface Env {
 }
 
 const TIMEOUT_MS = 15_000;
+
+// crt.sh answers a certificate-transparency query by scanning an index of
+// billions of certificates, and routinely takes far longer than the other
+// upstreams. A live run against the deployed Worker timed out at 15s on
+// anthropic.com, so it gets its own budget rather than dragging the shared one
+// up for endpoints that should answer fast.
+const CRTSH_TIMEOUT_MS = 45_000;
+
 const UA = "openosint-worker/1.0";
 
 async function getJSON(
   url: string,
   headers: Record<string, string> = {},
-  opts: { authenticated?: boolean } = {},
+  opts: { authenticated?: boolean; timeoutMs?: number } = {},
 ): Promise<{ ok: true; data: any } | { ok: false; error: string }> {
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json", ...headers },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       // On a call that actually sent credentials, 401/403 almost always means
@@ -57,7 +66,7 @@ async function getJSON(
     }
     return { ok: true, data: await res.json() };
   } catch (e: any) {
-    const msg = e?.name === "TimeoutError" ? `timed out after ${TIMEOUT_MS / 1000}s` : String(e?.message ?? e);
+    const msg = e?.name === "TimeoutError" ? `timed out after ${timeoutMs / 1000}s` : String(e?.message ?? e);
     return { ok: false, error: msg };
   }
 }
@@ -188,7 +197,11 @@ export async function searchSubdomains(domain: string): Promise<string> {
   const d = cleanDomain(domain);
   if (!d) return `Error: '${domain}' is not a valid domain name.`;
 
-  const r = await getJSON(`https://crt.sh/?q=%25.${encodeURIComponent(d)}&output=json`);
+  const r = await getJSON(
+    `https://crt.sh/?q=%25.${encodeURIComponent(d)}&output=json`,
+    {},
+    { timeoutMs: CRTSH_TIMEOUT_MS },
+  );
   if (!r.ok) return `[SUBDOMAINS] ${d}\nLookup failed: ${r.error}\n(crt.sh is frequently slow or down; retry later.)`;
 
   const names = new Set<string>();
